@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>出勤・乗車時間計算アプリ</title>
+    <!-- Tailwind CSSの読み込み -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts (Noto Sans JP & Inter) の読み込み -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans JP"', 'Inter', 'sans-serif'],
+                        num: ['Inter', '"Noto Sans JP"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen pb-14 selection:bg-orange-100 selection:text-orange-900">
+
+    <!-- ヘッダー（JR中央線・青梅線オレンジをアクセントにしたデザイン） -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm">
+        <div class="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="bg-orange-500 text-white p-2 rounded-xl shadow-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="4" y="3" width="16" height="16" rx="2"/>
+                        <path d="M4 11h16"/>
+                        <path d="M12 3v8"/>
+                        <path d="m8 19-2 3"/>
+                        <path d="m18 22-2-3"/>
+                        <path d="M8 15h.01"/>
+                        <path d="M16 15h.01"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-base sm:text-lg font-bold text-slate-900 leading-tight">通勤電車・乗車時刻ナビ</h1>
+                    <p class="text-[11px] sm:text-xs text-slate-500" id="header-route-subtitle">昭島駅 → 東京駅（JR青梅線・中央線直通）</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span id="save-badge" class="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full opacity-0 transition-opacity duration-300">
+                    保存済
+                </span>
+                <button type="button" id="open-editor-btn" class="text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2.5 py-1.5 rounded-xl transition flex items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-orange-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                    <span>時刻表編集</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="max-w-xl mx-auto px-4 pt-4 space-y-4">
+
+        <!-- 1. 職場（降車駅）＆ダイヤ選択カード -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div class="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+                    <span class="inline-block w-2 h-2 rounded-full bg-orange-500"></span>
+                    <span>職場エリア選択・明日（<span id="tomorrow-date-label">翌日</span>）</span>
+                </div>
+                <!-- 平日 / 土日祝 切り替え -->
+                <div class="inline-flex rounded-xl bg-slate-100 p-0.5 border border-slate-200/80">
+                    <button type="button" id="day-weekday-btn" class="day-type-btn px-3 py-1 text-xs font-bold rounded-lg transition">
+                        平日ダイヤ
+                    </button>
+                    <button type="button" id="day-holiday-btn" class="day-type-btn px-3 py-1 text-xs font-bold rounded-lg transition">
+                        土日祝ダイヤ
+                    </button>
+                </div>
+            </div>
+
+            <!-- 職場ワンタップ切り替え（東京駅 / 初台駅） -->
+            <div class="grid grid-cols-2 gap-2.5 mb-3">
+                <button type="button" id="dest-tokyo-btn" class="dest-toggle-btn text-left p-3 rounded-xl border-2 transition relative overflow-hidden">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-800">職場A・直通</span>
+                        <span class="dest-check-icon text-orange-600 font-bold text-xs">● 選択中</span>
+                    </div>
+                    <div class="text-base sm:text-lg font-extrabold text-slate-900">東京駅</div>
+                    <div class="text-[11px] text-slate-500 mt-0.5 truncate">JR中央線直通（乗換なし）</div>
+                </button>
+
+                <button type="button" id="dest-hatsudai-btn" class="dest-toggle-btn text-left p-3 rounded-xl border-2 transition relative overflow-hidden">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-100 text-pink-800">職場B・新宿乗換</span>
+                        <span class="dest-check-icon text-pink-600 font-bold text-xs hidden">● 選択中</span>
+                    </div>
+                    <div class="text-base sm:text-lg font-extrabold text-slate-900">初台駅</div>
+                    <div class="text-[11px] text-slate-500 mt-0.5 truncate">新宿から京王新線（+11分）</div>
+                </button>
+            </div>
+
+            <!-- 区間サマリーバー -->
+            <div class="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200/80 rounded-xl px-3.5 py-2.5">
+                <div>
+                    <span class="text-[10px] font-bold text-slate-400 block">乗車駅</span>
+                    <span id="display-dep-station" class="text-sm sm:text-base font-extrabold text-slate-900">昭島駅</span>
+                </div>
+                <div class="flex-1 flex flex-col items-center px-2">
+                    <span id="route-transfer-pill" class="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full">
+                        JR中央線直通
+                    </span>
+                </div>
+                <div class="text-right">
+                    <span class="text-[10px] font-bold text-slate-400 block">降車駅（職場最寄）</span>
+                    <span id="display-arr-station" class="text-sm sm:text-base font-extrabold text-slate-900">東京駅</span>
+                </div>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-2 flex items-center justify-between">
+                <span id="route-line-badge">路線: JR青梅線・中央線直通</span>
+                <span id="timetable-count-badge">対応ダイヤ: 04:45〜13:45</span>
+            </p>
+        </section>
+
+        <!-- 2. 翌日の出勤時間入力カード（AM 6:00〜PM 14:00 幅広対応） -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 sm:p-5">
+            <div class="flex items-center justify-between mb-2.5">
+                <label for="work-start-time" class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+                    翌日の出勤時間（AM 6:00〜PM 14:00）
+                </label>
+                <span class="text-xs text-slate-400">±15分微調整可</span>
+            </div>
+
+            <!-- 時刻入力＋前後15分微調整ボタン -->
+            <div class="flex items-center gap-2">
+                <button type="button" id="time-minus-15" class="shrink-0 px-3 py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-num font-bold text-xs sm:text-sm border border-slate-200 transition">
+                    -15分
+                </button>
+                <div class="relative flex-1">
+                    <input 
+                        type="time" 
+                        id="work-start-time" 
+                        value="09:00"
+                        class="w-full text-center font-num text-3xl sm:text-4xl font-extrabold text-slate-900 bg-slate-50 hover:bg-slate-100/80 focus:bg-white border-2 border-slate-200 focus:border-orange-500 rounded-2xl py-2.5 px-2 transition-all outline-none cursor-pointer"
+                    >
+                </div>
+                <button type="button" id="time-plus-15" class="shrink-0 px-3 py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-num font-bold text-xs sm:text-sm border border-slate-200 transition">
+                    +15分
+                </button>
+            </div>
+
+            <!-- AM 6:00 〜 PM 14:00 クイック選択グリッド -->
+            <div class="mt-3">
+                <div class="flex items-center justify-between text-[11px] text-slate-400 mb-1.5 px-0.5">
+                    <span>早番（06:00〜）</span>
+                    <span>日勤（08:30〜）</span>
+                    <span>遅番（11:00〜14:00）</span>
+                </div>
+                <div class="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+                    <button type="button" data-time="06:00" class="preset-btn py-1.5 px-1 text-xs font-num font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-orange-50 hover:border-orange-300 active:scale-95 transition">06:00</button>
+                    <button type="button" data-time="06:30" class="preset-btn py-1.5 px-1 text-xs font-num font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-orange-50 hover:border-orange-300 active:scale-95 transition">06:30</button>
+                    <button type="button" data-time="07:00" class="preset-btn py-1.5 px-1 text-xs font-num font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-orange-50 hover:border-orange-300 active:scale-95 transition">07:00</button>
+                    <button type="button" data-time="07:30" class="preset-btn py-1.5 px-1 text-xs font-num font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-orange-50 hover:border-orange-300 active:scale-95 transition">07:30</button>
+                    <button type="button" data-time="08:00" class="preset-btn py-1.5 px-1 text-xs font-num font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-orange-50 hover:border-orange-300 active:scale-95 transition">08:00</button>
+                    <button type="button" data-time="08:30" class="preset-btn py-1.5 px-1 text-xs font-num font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-orange-50 hover:border-orange-300 active:scale-95 transition">08:30</button>
+                    <button type="button" data-time="09:00" class="preset-btn py-1.5 px-1 text-xs font-num font-bold rounded-xl border border-orange-500 bg-orange-50 text-orange-700 active:scale-95 transition">09:00</button>
+                    <button type="button" data-time="09:30" class="preset-btn py-1.5 px-1 text-xs font-num font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-orange-50 hover:border-orange-300 active:scale-95 transition">09:30</button>
+                    <button type="button" data-time="10:00" class="preset-btn py-1.5 px-1 text-xs font-num font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-orange-50 hover:border-orange-300 active:scale-95 transition">10:00</button>
+                    <button type="button" data-time="11:00" class="preset-btn py-1.5 px-1 text-xs font-num font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-orange-50 hover:border-orange-300 active:scale-95 transition">11:00</button>
+                    <button type="button" data-time="12:00" class="preset-btn py-1.5 px-1 text-xs font-num font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-orange-50 hover:border-orange-300 active:scale-95 transition">12:00</button>
+                    <button type="button" data-time="13:00" class="preset-btn py-1.5 px-1 text-xs font-num font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-orange-50 hover:border-orange-300 active:scale-95 transition">13:00</button>
+                </div>
+                <div class="mt-1.5 grid grid-cols-2 gap-1.5">
+                    <button type="button" data-time="13:30" class="preset-btn py-1.5 px-2 text-xs font-num font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-orange-50 hover:border-orange-300 active:scale-95 transition">13:30（午後シフト）</button>
+                    <button type="button" data-time="14:00" class="preset-btn py-1.5 px-2 text-xs font-num font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-orange-50 hover:border-orange-300 active:scale-95 transition">14:00（PM 2:00）</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. 明日の行動スケジュール（メイン結果カード） -->
+        <section id="result-card" class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl shadow-lg text-white p-5 relative overflow-hidden border border-slate-700">
+            <div class="absolute -right-10 -top-10 w-40 h-40 bg-orange-500/20 rounded-full blur-2xl pointer-events-none"></div>
+
+            <!-- 上部バッジと余裕時間ステータス -->
+            <div class="flex items-center justify-between gap-2 mb-3">
+                <span id="selected-train-status-badge" class="inline-flex items-center gap-1 bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 px-2.5 py-0.5 rounded-full text-xs font-bold">
+                    ✓ 出勤時間に間に合うベスト便
+                </span>
+                <span id="margin-summary-badge" class="text-xs font-bold text-orange-300">
+                    始業15分前着
+                </span>
+            </div>
+
+            <!-- 自宅を出る時間（最優先アクション） -->
+            <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10 mb-3.5 text-center">
+                <p class="text-xs text-slate-300 font-bold mb-1">🏠 自宅を出る時間</p>
+                <div class="flex items-baseline justify-center gap-1.5">
+                    <span id="res-home-depart" class="font-num text-5xl sm:text-6xl font-extrabold tracking-tight text-white">07:28</span>
+                    <span class="text-sm font-bold text-slate-300">出発</span>
+                </div>
+                <p id="day-diff-note" class="text-xs text-amber-300 font-bold mt-1 hidden">※前日の深夜に出発する必要があります</p>
+            </div>
+
+            <!-- 乗る電車の詳細（実時刻表データ＋乗換内訳） -->
+            <div class="bg-orange-500/15 border border-orange-400/30 rounded-2xl p-3.5 mb-3.5">
+                <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-[11px] font-bold text-orange-200">🚃 昭島駅で乗る電車</span>
+                    <span id="res-train-type-pill" class="text-[11px] font-extrabold px-2 py-0.5 rounded bg-orange-500 text-white">通勤特快・東京行</span>
+                </div>
+                <div class="flex items-center justify-between gap-2">
+                    <div>
+                        <span id="res-train-depart" class="font-num text-2xl sm:text-3xl font-extrabold text-white">07:38</span>
+                        <span id="res-dep-station-label" class="text-xs text-slate-300 ml-1">昭島発</span>
+                    </div>
+                    <div class="flex-1 flex flex-col items-center px-1">
+                        <span id="res-ride-mins" class="text-[10px] font-bold text-orange-200">所要 58分</span>
+                        <div class="w-full h-0.5 bg-orange-400/50 relative my-0.5">
+                            <span class="absolute right-0 -top-1 w-2 h-2 border-t-2 border-r-2 border-orange-300 rotate-45"></span>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span id="res-train-arrive" class="font-num text-2xl sm:text-3xl font-extrabold text-white">08:36</span>
+                        <span id="res-arr-station-label" class="text-xs text-slate-300 ml-1">東京着</span>
+                    </div>
+                </div>
+                <!-- 初台駅選択時の新宿乗り換え内訳バー -->
+                <div id="res-transfer-detail" class="hidden mt-2.5 pt-2 border-t border-pink-400/30 text-[11px] text-pink-100 flex items-center justify-between gap-2">
+                    <span>🔄 新宿駅 <strong id="res-shinjuku-arr" class="font-num text-white">08:22</strong>着 → 京王新線乗換</span>
+                    <span class="bg-pink-500/30 border border-pink-400/40 px-2 py-0.5 rounded text-pink-100 font-bold">乗換+乗車11分</span>
+                </div>
+            </div>
+
+            <!-- 職場到着予定 -->
+            <div class="flex items-center justify-between text-xs bg-white/5 rounded-xl px-3.5 py-2.5 border border-white/10 mb-4">
+                <span class="text-slate-300">🏢 <span id="res-workplace-label">東京駅職場</span>到着：<strong id="res-office-arrive" class="font-num text-sm text-white ml-1">08:46</strong></span>
+                <span class="text-slate-300">始業：<strong id="res-work-start" class="font-num text-sm text-white ml-1">09:00</strong></span>
+            </div>
+
+            <!-- コピーボタン -->
+            <button type="button" id="copy-btn" class="w-full py-3 px-4 bg-orange-500 hover:bg-orange-600 active:scale-[0.99] text-white font-bold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                <span>明日の乗車予定をコピー</span>
+            </button>
+        </section>
+
+        <!-- 4. 前後の電車比較（1本前・ベスト便・1本後） -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 sm:p-5">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+                    前後の電車を比較・選択
+                </h2>
+                <span class="text-[11px] text-slate-400">タップで切り替え</span>
+            </div>
+            <div id="candidate-trains-list" class="space-y-2.5">
+                <!-- JSで動的に3件（1本前・推奨・1本後）を描画 -->
+            </div>
+        </section>
+
+        <!-- 5. 徒歩・余裕時間の調整設定 -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 sm:p-5">
+            <div class="flex items-center justify-between mb-3.5">
+                <div>
+                    <h2 class="text-sm font-bold text-slate-800">徒歩時間・余裕時間の設定</h2>
+                    <p class="text-[11px] text-slate-400 mt-0.5">電車の乗車時間は時刻表データから自動計算されます</p>
+                </div>
+                <button type="button" id="reset-btn" class="text-xs text-slate-400 hover:text-slate-600 underline py-1 px-2">
+                    初期値に戻す
+                </button>
+            </div>
+
+            <div class="space-y-3">
+                <!-- 自宅 → 乗車駅 -->
+                <div class="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-lg">🚶</span>
+                        <div>
+                            <label for="walk-to-station" class="block text-xs sm:text-sm font-bold text-slate-700">自宅 → <span class="dyn-dep-name">昭島駅</span></label>
+                            <span class="text-[11px] text-slate-400">ホーム到着までの徒歩時間</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <button type="button" class="step-btn w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-100 active:scale-95" data-target="walk-to-station" data-delta="-1">-</button>
+                        <input type="number" id="walk-to-station" min="0" max="120" value="10" class="w-14 text-center font-num font-bold text-base bg-white border border-slate-200 rounded-lg py-1 text-slate-800 focus:border-orange-500 outline-none">
+                        <button type="button" class="step-btn w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-100 active:scale-95" data-target="walk-to-station" data-delta="1">+</button>
+                        <span class="text-xs font-medium text-slate-500">分</span>
+                    </div>
+                </div>
+
+                <!-- 降車駅 → 職場 -->
+                <div class="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-lg">🏢</span>
+                        <div>
+                            <label for="walk-to-work" class="block text-xs sm:text-sm font-bold text-slate-700"><span class="dyn-arr-name">東京駅</span> → 職場</label>
+                            <span class="text-[11px] text-slate-400">職場ごとに個別に自動保存されます</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <button type="button" class="step-btn w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-100 active:scale-95" data-target="walk-to-work" data-delta="-1">-</button>
+                        <input type="number" id="walk-to-work" min="0" max="120" value="10" class="w-14 text-center font-num font-bold text-base bg-white border border-slate-200 rounded-lg py-1 text-slate-800 focus:border-orange-500 outline-none">
+                        <button type="button" class="step-btn w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-100 active:scale-95" data-target="walk-to-work" data-delta="1">+</button>
+                        <span class="text-xs font-medium text-slate-500">分</span>
+                    </div>
+                </div>
+
+                <!-- 出勤前の余裕時間 -->
+                <div class="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-lg">☕</span>
+                        <div>
+                            <label for="buffer-time" class="block text-xs sm:text-sm font-bold text-slate-700">希望する余裕時間</label>
+                            <span class="text-[11px] text-slate-400">始業の何分前までに着きたいか</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <button type="button" class="step-btn w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-100 active:scale-95" data-target="buffer-time" data-delta="-5">-</button>
+                        <input type="number" id="buffer-time" min="0" max="120" value="10" class="w-14 text-center font-num font-bold text-base bg-white border border-slate-200 rounded-lg py-1 text-slate-800 focus:border-orange-500 outline-none">
+                        <button type="button" class="step-btn w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-100 active:scale-95" data-target="buffer-time" data-delta="5">+</button>
+                        <span class="text-xs font-medium text-slate-500">分</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. タイムライン可視化カード -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 sm:p-5">
+            <h2 class="text-sm font-bold text-slate-800 mb-4 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+                明日のタイムライン
+            </h2>
+
+            <div class="relative pl-6 border-l-2 border-orange-200 space-y-5 ml-2.5 my-1">
+                <div class="relative">
+                    <span class="absolute -left-[31px] top-0.5 w-3.5 h-3.5 rounded-full bg-slate-500 ring-4 ring-white"></span>
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-xs font-bold text-slate-600">🏠 自宅を出発</span>
+                        <span id="tl-home-depart" class="font-num text-base font-bold text-slate-800">07:28</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-0.5">徒歩移動（<span id="tl-walk-home">10</span>分）</p>
+                </div>
+
+                <div class="relative bg-orange-50 -ml-2 p-2.5 rounded-xl border border-orange-200/80">
+                    <span class="absolute -left-[23px] top-3 w-4 h-4 rounded-full bg-orange-500 ring-4 ring-white"></span>
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-xs font-extrabold text-orange-800">🚃 <span id="tl-dep-station">昭島駅</span> 発車</span>
+                        <span id="tl-train-depart" class="font-num text-lg font-extrabold text-orange-700">07:38</span>
+                    </div>
+                    <p class="text-xs text-orange-700/90 mt-0.5"><span id="tl-train-info">青梅特快・東京行</span>（乗車 <span id="tl-train-dur">40</span>分）</p>
+                </div>
+
+                <div class="relative">
+                    <span class="absolute -left-[31px] top-0.5 w-3.5 h-3.5 rounded-full bg-orange-400 ring-4 ring-white"></span>
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-xs font-bold text-slate-700">🚉 <span id="tl-arr-station">東京駅</span> 到着</span>
+                        <span id="tl-train-arrive" class="font-num text-base font-bold text-slate-800">08:36</span>
+                    </div>
+                    <p id="tl-transfer-note" class="text-xs text-pink-600 font-medium mt-0.5 hidden">新宿駅（08:22着）から京王新線へ乗り換え（乗換待ち9分＋乗車2分）</p>
+                    <p class="text-xs text-slate-400 mt-0.5">職場まで徒歩（<span id="tl-walk-work">10</span>分）</p>
+                </div>
+
+                <div class="relative">
+                    <span class="absolute -left-[31px] top-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 ring-4 ring-white"></span>
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-xs font-bold text-emerald-700">🏢 職場到着</span>
+                        <span id="tl-office-arrive" class="font-num text-base font-bold text-emerald-700">08:46</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-0.5" id="tl-margin-note">始業まで 14分 の余裕があります</p>
+                </div>
+
+                <div class="relative">
+                    <span class="absolute -left-[31px] top-0.5 w-3.5 h-3.5 rounded-full bg-slate-900 ring-4 ring-white"></span>
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-xs font-bold text-slate-900">⏰ 出勤時間（始業）</span>
+                        <span id="tl-work-start" class="font-num text-base font-extrabold text-slate-900">09:00</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- マイ時刻表・駅名カスタマイズモーダル -->
+    <div id="editor-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-2xl shadow-2xl border border-slate-200 max-h-[90vh] flex flex-col overflow-hidden">
+            <!-- モーダルヘッダー -->
+            <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <div>
+                    <h3 class="text-base font-bold text-slate-900">昭島駅 発車時刻表の編集</h3>
+                    <p class="text-xs text-slate-500">AM 4:45〜PM 13:45の時刻表微調整・追加ができます</p>
+                </div>
+                <button type="button" id="close-editor-btn" class="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-200/60">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- モーダルボディ -->
+            <div class="p-5 overflow-y-auto space-y-4 flex-1">
+                <!-- 時刻表リスト編集 -->
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="text-xs font-bold text-slate-700">
+                            発車時刻リスト（<span id="edit-day-label" class="text-orange-600">平日ダイヤ</span>）
+                        </label>
+                        <button type="button" id="restore-default-timetable-btn" class="text-xs text-orange-600 hover:underline font-bold">
+                            標準ダイヤ（04:45〜13:45）に戻す
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-500 mb-2">
+                        1行につき <code class="bg-slate-100 px-1 rounded">発車時刻, 新宿までの所要分, 種別, 行先</code> の形式で編集できます。（東京駅は+14分、初台駅は+11分で自動計算されます）
+                    </p>
+                    <textarea id="edit-timetable-text" rows="11" class="w-full font-num text-xs sm:text-sm border border-slate-300 rounded-xl p-3 focus:border-orange-500 outline-none leading-relaxed bg-slate-50"></textarea>
+                </div>
+            </div>
+
+            <!-- モーダルフッター -->
+            <div class="px-5 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
+                <button type="button" id="cancel-editor-btn" class="px-4 py-2 text-xs sm:text-sm font-bold text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-100">
+                    キャンセル
+                </button>
+                <button type="button" id="save-editor-btn" class="px-5 py-2 text-xs sm:text-sm font-bold text-white bg-orange-500 hover:bg-orange-600 rounded-xl shadow-sm">
+                    保存して反映
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- トースト通知 -->
+    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs sm:text-sm font-medium px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 opacity-0 pointer-events-none transition-all duration-300 translate-y-2 z-50">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <span id="toast-message">コピーしました！</span>
+    </div>
+
+    <script>
+        /**
+         * JR青梅線・中央線直通（昭島駅発 上り）早朝04:45〜午後13:45までのリアル時刻表データ
+         * durShinjuku: 昭島→新宿の所要時間（分）
+         * ※ 東京駅は新宿から+14分、初台駅は新宿から京王新線乗り換え（徒歩・待ち9分＋乗車2分＝計+11分）で算出
+         */
+        const DEFAULT_TIMETABLE_DATA = {
+            lineName: 'JR青梅線・中央線直通（上り）',
+            depStation: '昭島駅',
+            weekday: [
+                // 4時台〜5時台（AM 6:00出勤対応）
+                { dep: '04:46', durShinjuku: 41, type: '快速', dest: '東京行' },
+                { dep: '05:05', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '05:19', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '05:32', durShinjuku: 43, type: '快速', dest: '東京行' },
+                { dep: '05:48', durShinjuku: 44, type: '快速', dest: '東京行' },
+                // 6時台
+                { dep: '06:03', durShinjuku: 44, type: '快速', dest: '東京行' },
+                { dep: '06:16', durShinjuku: 45, type: '快速', dest: '東京行' },
+                { dep: '06:28', durShinjuku: 46, type: '快速', dest: '東京行' },
+                { dep: '06:39', durShinjuku: 45, type: '通勤特快', dest: '東京行' },
+                { dep: '06:48', durShinjuku: 46, type: '快速', dest: '東京行' },
+                { dep: '06:58', durShinjuku: 47, type: '快速', dest: '東京行' },
+                // 7時台
+                { dep: '07:08', durShinjuku: 45, type: '通勤特快', dest: '東京行' },
+                { dep: '07:17', durShinjuku: 47, type: '快速', dest: '東京行' },
+                { dep: '07:27', durShinjuku: 47, type: '快速', dest: '東京行' },
+                { dep: '07:38', durShinjuku: 44, type: '通勤特快', dest: '東京行' },
+                { dep: '07:47', durShinjuku: 47, type: '快速', dest: '東京行' },
+                { dep: '07:56', durShinjuku: 47, type: '快速', dest: '東京行' },
+                // 8時台
+                { dep: '08:06', durShinjuku: 46, type: '快速', dest: '東京行' },
+                { dep: '08:15', durShinjuku: 46, type: '快速', dest: '東京行' },
+                { dep: '08:25', durShinjuku: 45, type: '快速', dest: '東京行' },
+                { dep: '08:36', durShinjuku: 44, type: '快速', dest: '東京行' },
+                { dep: '08:47', durShinjuku: 44, type: '快速', dest: '東京行' },
+                { dep: '08:58', durShinjuku: 40, type: '青梅特快', dest: '東京行' },
+                // 9時台
+                { dep: '09:10', durShinjuku: 43, type: '快速', dest: '東京行' },
+                { dep: '09:22', durShinjuku: 43, type: '快速', dest: '東京行' },
+                { dep: '09:34', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '09:46', durShinjuku: 43, type: '快速', dest: '東京行' },
+                { dep: '09:58', durShinjuku: 43, type: '快速', dest: '東京行' },
+                // 10時台〜13時台（PM 14:00出勤まで対応）
+                { dep: '10:12', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '10:26', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '10:41', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '10:56', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '11:12', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '11:27', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '11:42', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '11:57', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '12:12', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '12:27', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '12:42', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '12:57', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '13:12', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '13:27', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '13:42', durShinjuku: 39, type: '青梅特快', dest: '東京行' }
+            ],
+            holiday: [
+                // 4時台〜5時台（AM 6:00出勤対応）
+                { dep: '04:48', durShinjuku: 41, type: '快速', dest: '東京行' },
+                { dep: '05:10', durShinjuku: 41, type: '快速', dest: '東京行' },
+                { dep: '05:35', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '05:54', durShinjuku: 42, type: '快速', dest: '東京行' },
+                // 6時台〜9時台
+                { dep: '06:12', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '06:29', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '06:45', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '07:01', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '07:16', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '07:31', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '07:45', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '08:00', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '08:14', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '08:28', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '08:42', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '08:56', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '09:11', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '09:26', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '09:41', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '09:56', durShinjuku: 42, type: '快速', dest: '東京行' },
+                // 10時台〜13時台（PM 14:00出勤まで対応）
+                { dep: '10:12', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '10:28', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '10:44', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '11:00', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '11:15', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '11:30', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '11:45', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '12:00', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '12:15', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '12:30', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '12:45', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '13:00', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '13:15', durShinjuku: 39, type: '青梅特快', dest: '東京行' },
+                { dep: '13:30', durShinjuku: 42, type: '快速', dest: '東京行' },
+                { dep: '13:45', durShinjuku: 39, type: '青梅特快', dest: '東京行' }
+            ]
+        };
+
+        const STORAGE_KEY = 'commute_tokyo_hatsudai_v3';
+
+        // 職場ごとの個別設定初期値
+        const DEFAULT_WORKPLACE_PROFILES = {
+            '東京駅': { walkToWork: 10, bufferTime: 10 },
+            '初台駅': { walkToWork: 6, bufferTime: 10 }
+        };
+
+        // アプリ状態
+        let appState = {
+            workStartTime: '09:00',
+            walkToStation: 10,
+            dayType: 'weekday', // 'weekday' | 'holiday'
+            selectedArrStation: '東京駅', // '東京駅' | '初台駅'
+            workplaceProfiles: JSON.parse(JSON.stringify(DEFAULT_WORKPLACE_PROFILES)),
+            manualTrainIndex: null,
+            routeData: JSON.parse(JSON.stringify(DEFAULT_TIMETABLE_DATA))
+        };
+
+        // DOM要素
+        const workStartInput = document.getElementById('work-start-time');
+        const walkToStationInput = document.getElementById('walk-to-station');
+        const walkToWorkInput = document.getElementById('walk-to-work');
+        const bufferTimeInput = document.getElementById('buffer-time');
+
+        const destTokyoBtn = document.getElementById('dest-tokyo-btn');
+        const destHatsudaiBtn = document.getElementById('dest-hatsudai-btn');
+
+        const dayWeekdayBtn = document.getElementById('day-weekday-btn');
+        const dayHolidayBtn = document.getElementById('day-holiday-btn');
+        const tomorrowDateLabel = document.getElementById('tomorrow-date-label');
+
+        const displayDepStation = document.getElementById('display-dep-station');
+        const displayArrStation = document.getElementById('display-arr-station');
+        const routeTransferPill = document.getElementById('route-transfer-pill');
+        const headerRouteSubtitle = document.getElementById('header-route-subtitle');
+        const routeLineBadge = document.getElementById('route-line-badge');
+        const timetableCountBadge = document.getElementById('timetable-count-badge');
+
+        const resHomeDepart = document.getElementById('res-home-depart');
+        const resTrainDepart = document.getElementById('res-train-depart');
+        const resTrainArrive = document.getElementById('res-train-arrive');
+        const resRideMins = document.getElementById('res-ride-mins');
+        const resTrainTypePill = document.getElementById('res-train-type-pill');
+        const resDepStationLabel = document.getElementById('res-dep-station-label');
+        const resArrStationLabel = document.getElementById('res-arr-station-label');
+        const resTransferDetail = document.getElementById('res-transfer-detail');
+        const resShinjukuArr = document.getElementById('res-shinjuku-arr');
+        const resWorkplaceLabel = document.getElementById('res-workplace-label');
+        const resOfficeArrive = document.getElementById('res-office-arrive');
+        const resWorkStart = document.getElementById('res-work-start');
+        const selectedTrainStatusBadge = document.getElementById('selected-train-status-badge');
+        const marginSummaryBadge = document.getElementById('margin-summary-badge');
+        const dayDiffNote = document.getElementById('day-diff-note');
+
+        const candidateTrainsList = document.getElementById('candidate-trains-list');
+
+        // タイムライン要素
+        const tlHomeDepart = document.getElementById('tl-home-depart');
+        const tlTrainDepart = document.getElementById('tl-train-depart');
+        const tlTrainArrive = document.getElementById('tl-train-arrive');
+        const tlOfficeArrive = document.getElementById('tl-office-arrive');
+        const tlWorkStart = document.getElementById('tl-work-start');
+        const tlWalkHome = document.getElementById('tl-walk-home');
+        const tlTrainDur = document.getElementById('tl-train-dur');
+        const tlWalkWork = document.getElementById('tl-walk-work');
+        const tlDepStation = document.getElementById('tl-dep-station');
+        const tlArrStation = document.getElementById('tl-arr-station');
+        const tlTrainInfo = document.getElementById('tl-train-info');
+        const tlTransferNote = document.getElementById('tl-transfer-note');
+        const tlMarginNote = document.getElementById('tl-margin-note');
+
+        // モーダル要素
+        const editorModal = document.getElementById('editor-modal');
+        const openEditorBtn = document.getElementById('open-editor-btn');
+        const closeEditorBtn = document.getElementById('close-editor-btn');
+        const cancelEditorBtn = document.getElementById('cancel-editor-btn');
+        const saveEditorBtn = document.getElementById('save-editor-btn');
+        const restoreDefaultTimetableBtn = document.getElementById('restore-default-timetable-btn');
+        const editTimetableText = document.getElementById('edit-timetable-text');
+        const editDayLabel = document.getElementById('edit-day-label');
+
+        const saveBadge = document.getElementById('save-badge');
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toast-message');
+        let saveTimeout = null;
+        let toastTimeout = null;
+
+        /**
+         * "HH:MM" を 0時からの経過分数に変換
+         */
+        function timeToMinutes(timeStr) {
+            const [h, m] = timeStr.split(':').map(Number);
+            return (h * 60) + m;
+        }
+
+        /**
+         * 経過分数を "HH:MM" に変換
+         */
+        function minutesToTime(totalMins) {
+            let mins = totalMins % 1440;
+            if (mins < 0) mins += 1440;
+            const h = Math.floor(mins / 60);
+            const m = mins % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+
+        /**
+         * 翌日の日付と曜日を取得し、平日か土日祝かを自動判定
+         */
+        function detectTomorrowDayType() {
+            const now = new Date();
+            const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+            const dayOfWeek = tomorrow.getDay(); // 0:日, 6:土
+            const weekNames = ['日', '月', '火', '水', '木', '金', '土'];
+            tomorrowDateLabel.textContent = `${tomorrow.getMonth() + 1}/${tomorrow.getDate()}(${weekNames[dayOfWeek]})`;
+            return (dayOfWeek === 0 || dayOfWeek === 6) ? 'holiday' : 'weekday';
+        }
+
+        /**
+         * localStorageから設定を読み込み
+         */
+        function loadState() {
+            appState.dayType = detectTomorrowDayType();
+
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    const saved = JSON.parse(raw);
+                    appState.workStartTime = saved.workStartTime || '09:00';
+                    appState.walkToStation = saved.walkToStation ?? 10;
+                    appState.selectedArrStation = saved.selectedArrStation || '東京駅';
+                    if (saved.workplaceProfiles) {
+                        appState.workplaceProfiles = {
+                            ...DEFAULT_WORKPLACE_PROFILES,
+                            ...saved.workplaceProfiles
+                        };
+                    }
+                    if (saved.routeData) {
+                        appState.routeData = saved.routeData;
+                    }
+                }
+            } catch (e) {
+                console.error('読み込みエラー:', e);
+            }
+
+            syncInputsFromState();
+        }
+
+        /**
+         * 現在の選択職場の値を入力欄へ同期
+         */
+        function syncInputsFromState() {
+            const profile = appState.workplaceProfiles[appState.selectedArrStation] || { walkToWork: 10, bufferTime: 10 };
+            workStartInput.value = appState.workStartTime;
+            walkToStationInput.value = appState.walkToStation;
+            walkToWorkInput.value = profile.walkToWork;
+            bufferTimeInput.value = profile.bufferTime;
+        }
+
+        /**
+         * localStorageへ保存
+         */
+        function saveState() {
+            try {
+                const toSave = {
+                    workStartTime: appState.workStartTime,
+                    walkToStation: appState.walkToStation,
+                    selectedArrStation: appState.selectedArrStation,
+                    workplaceProfiles: appState.workplaceProfiles,
+                    routeData: appState.routeData
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+
+                saveBadge.classList.remove('opacity-0');
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(() => saveBadge.classList.add('opacity-0'), 1500);
+            } catch (e) {
+                console.error('保存エラー:', e);
+            }
+        }
+
+        /**
+         * 列車種別に応じたバッジ色クラスを返す
+         */
+        function getTrainTypeBadgeClass(type) {
+            if (type.includes('特快')) {
+                return 'bg-orange-500 text-white';
+            } else if (type.includes('通勤')) {
+                return 'bg-purple-600 text-white';
+            } else if (type.includes('快速')) {
+                return 'bg-blue-600 text-white';
+            }
+            return 'bg-slate-600 text-white';
+        }
+
+        /**
+         * 現在の職場（東京駅 or 初台駅）と曜日から時刻表配列を計算
+         * - 東京駅: 新宿までの所要時間 + 14分（JR中央線直通）
+         * - 初台駅: 新宿までの所要時間 + 11分（JR新宿駅降車→京王新線乗換9分＋乗車2分）
+         */
+        function getNormalizedTimetable() {
+            const rawList = appState.routeData[appState.dayType] || [];
+            const isHatsudai = appState.selectedArrStation === '初台駅';
+
+            return rawList.map((item, idx) => {
+                const shinjukuDur = item.durShinjuku || 43;
+                const extraMins = isHatsudai ? 11 : 14;
+                const totalDuration = shinjukuDur + extraMins;
+
+                const depMins = timeToMinutes(item.dep);
+                const shinjukuArrMins = depMins + shinjukuDur;
+                const arrMins = depMins + totalDuration;
+
+                return {
+                    index: idx,
+                    dep: item.dep,
+                    depMins,
+                    shinjukuArrMins,
+                    shinjukuArr: minutesToTime(shinjukuArrMins),
+                    arrMins,
+                    arr: minutesToTime(arrMins),
+                    duration: totalDuration,
+                    shinjukuDur,
+                    type: item.type || '快速',
+                    dest: item.dest || '東京行'
+                };
+            }).sort((a, b) => a.depMins - b.depMins);
+        }
+
+        /**
+         * メイン計算＆描画処理
+         */
+        function renderAll(shouldSave = true) {
+            appState.workStartTime = workStartInput.value || '09:00';
+            appState.walkToStation = Math.max(0, parseInt(walkToStationInput.value, 10) || 0);
+
+            const walkToWork = Math.max(0, parseInt(walkToWorkInput.value, 10) || 0);
+            const bufferTime = Math.max(0, parseInt(bufferTimeInput.value, 10) || 0);
+
+            // 現在選択中の職場のプロフィールを更新
+            appState.workplaceProfiles[appState.selectedArrStation] = {
+                walkToWork,
+                bufferTime
+            };
+
+            const isHatsudai = appState.selectedArrStation === '初台駅';
+            const workStartMins = timeToMinutes(appState.workStartTime);
+            const targetStationArriveLimit = workStartMins - walkToWork - bufferTime;
+
+            const timetable = getNormalizedTimetable();
+
+            // 職場切り替えカードの見た目更新
+            if (!isHatsudai) {
+                destTokyoBtn.className = 'dest-toggle-btn text-left p-3 rounded-xl border-2 border-orange-500 bg-orange-50/50 shadow-xs transition relative overflow-hidden';
+                destTokyoBtn.querySelector('.dest-check-icon').classList.remove('hidden');
+
+                destHatsudaiBtn.className = 'dest-toggle-btn text-left p-3 rounded-xl border-2 border-slate-200 bg-white hover:border-slate-300 transition relative overflow-hidden';
+                destHatsudaiBtn.querySelector('.dest-check-icon').classList.add('hidden');
+
+                routeTransferPill.textContent = 'JR中央線直通（乗換なし）';
+                routeTransferPill.className = 'text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-200 px-2.5 py-0.5 rounded-full';
+                headerRouteSubtitle.textContent = '昭島駅 → 東京駅（JR青梅線・中央線直通）';
+                routeLineBadge.textContent = '路線: JR青梅線・中央線直通';
+            } else {
+                destHatsudaiBtn.className = 'dest-toggle-btn text-left p-3 rounded-xl border-2 border-pink-500 bg-pink-50/50 shadow-xs transition relative overflow-hidden';
+                destHatsudaiBtn.querySelector('.dest-check-icon').classList.remove('hidden');
+
+                destTokyoBtn.className = 'dest-toggle-btn text-left p-3 rounded-xl border-2 border-slate-200 bg-white hover:border-slate-300 transition relative overflow-hidden';
+                destTokyoBtn.querySelector('.dest-check-icon').classList.add('hidden');
+
+                routeTransferPill.textContent = '新宿駅で京王新線へ乗換';
+                routeTransferPill.className = 'text-[10px] font-bold text-pink-700 bg-pink-50 border border-pink-200 px-2.5 py-0.5 rounded-full';
+                headerRouteSubtitle.textContent = '昭島駅 → 新宿乗換 → 初台駅（京王新線）';
+                routeLineBadge.textContent = '路線: JR青梅線・中央線 ＋ 京王新線';
+            }
+
+            displayDepStation.textContent = appState.routeData.depStation;
+            displayArrStation.textContent = appState.selectedArrStation;
+            timetableCountBadge.textContent = `掲載便数: ${timetable.length}本（04:46〜13:45）`;
+
+            document.querySelectorAll('.dyn-dep-name').forEach(el => el.textContent = appState.routeData.depStation);
+            document.querySelectorAll('.dyn-arr-name').forEach(el => el.textContent = appState.selectedArrStation);
+
+            // 平日/土日祝ボタン見た目更新
+            if (appState.dayType === 'weekday') {
+                dayWeekdayBtn.className = 'day-type-btn px-3 py-1 text-xs font-bold rounded-lg bg-orange-500 text-white shadow-xs transition';
+                dayHolidayBtn.className = 'day-type-btn px-3 py-1 text-xs font-bold rounded-lg text-slate-600 hover:bg-slate-200/70 transition';
+            } else {
+                dayHolidayBtn.className = 'day-type-btn px-3 py-1 text-xs font-bold rounded-lg bg-rose-500 text-white shadow-xs transition';
+                dayWeekdayBtn.className = 'day-type-btn px-3 py-1 text-xs font-bold rounded-lg text-slate-600 hover:bg-slate-200/70 transition';
+            }
+
+            // クイック時間ボタンのハイライト更新
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                if (btn.dataset.time === appState.workStartTime) {
+                    btn.classList.add('border-orange-500', 'bg-orange-50', 'text-orange-700');
+                    btn.classList.remove('border-slate-200', 'bg-white', 'text-slate-700');
+                } else {
+                    btn.classList.remove('border-orange-500', 'bg-orange-50', 'text-orange-700');
+                    btn.classList.add('border-slate-200', 'bg-white', 'text-slate-700');
+                }
+            });
+
+            if (timetable.length === 0) {
+                candidateTrainsList.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">時刻表データがありません。「時刻表編集」から追加してください。</p>`;
+                return;
+            }
+
+            // 条件を満たす最後の電車をベスト便とする
+            let recommendedIdx = -1;
+            for (let i = 0; i < timetable.length; i++) {
+                if (timetable[i].arrMins <= targetStationArriveLimit) {
+                    recommendedIdx = i;
+                } else {
+                    break;
+                }
+            }
+            if (recommendedIdx === -1) {
+                recommendedIdx = 0;
+            }
+
+            const activeIdx = (appState.manualTrainIndex !== null && timetable[appState.manualTrainIndex])
+                ? appState.manualTrainIndex
+                : recommendedIdx;
+
+            const chosenTrain = timetable[activeIdx];
+            const homeDepartMins = chosenTrain.depMins - appState.walkToStation;
+            const officeArriveMins = chosenTrain.arrMins + walkToWork;
+            const actualMarginMins = workStartMins - officeArriveMins;
+
+            // メイン結果カード反映
+            resHomeDepart.textContent = minutesToTime(homeDepartMins);
+            resTrainDepart.textContent = chosenTrain.dep;
+            resTrainArrive.textContent = chosenTrain.arr;
+            resRideMins.textContent = `所要 ${chosenTrain.duration}分`;
+            resTrainTypePill.textContent = `${chosenTrain.type}・${chosenTrain.dest}`;
+            resDepStationLabel.textContent = `${appState.routeData.depStation.replace(/駅$/, '')}発`;
+            resArrStationLabel.textContent = `${appState.selectedArrStation.replace(/駅$/, '')}着`;
+            resWorkplaceLabel.textContent = `${appState.selectedArrStation}職場`;
+            resOfficeArrive.textContent = minutesToTime(officeArriveMins);
+            resWorkStart.textContent = appState.workStartTime;
+
+            // 初台駅選択時の乗り換え詳細表示
+            if (isHatsudai) {
+                resTransferDetail.classList.remove('hidden');
+                resShinjukuArr.textContent = chosenTrain.shinjukuArr;
+            } else {
+                resTransferDetail.classList.add('hidden');
+            }
+
+            if (homeDepartMins < 0) {
+                dayDiffNote.classList.remove('hidden');
+            } else {
+                dayDiffNote.classList.add('hidden');
+            }
+
+            // 余裕時間・遅刻判定バッジ更新
+            if (actualMarginMins < 0) {
+                selectedTrainStatusBadge.className = 'inline-flex items-center gap-1 bg-rose-500/25 border border-rose-400/50 text-rose-200 px-2.5 py-0.5 rounded-full text-xs font-bold';
+                selectedTrainStatusBadge.textContent = `⚠ 始業に ${Math.abs(actualMarginMins)}分 遅れます`;
+                marginSummaryBadge.className = 'text-xs font-bold text-rose-300';
+                marginSummaryBadge.textContent = `${Math.abs(actualMarginMins)}分遅刻`;
+            } else if (actualMarginMins < bufferTime) {
+                selectedTrainStatusBadge.className = 'inline-flex items-center gap-1 bg-amber-500/25 border border-amber-400/50 text-amber-200 px-2.5 py-0.5 rounded-full text-xs font-bold';
+                selectedTrainStatusBadge.textContent = '△ 希望の余裕時間より少しタイトです';
+                marginSummaryBadge.className = 'text-xs font-bold text-amber-300';
+                marginSummaryBadge.textContent = `始業${actualMarginMins}分前着`;
+            } else {
+                selectedTrainStatusBadge.className = 'inline-flex items-center gap-1 bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 px-2.5 py-0.5 rounded-full text-xs font-bold';
+                selectedTrainStatusBadge.textContent = activeIdx === recommendedIdx ? '✓ 出勤時間に間に合うベスト便' : '✓ 余裕を持って到着できる便';
+                marginSummaryBadge.className = 'text-xs font-bold text-emerald-300';
+                marginSummaryBadge.textContent = `始業${actualMarginMins}分前着`;
+            }
+
+            // タイムライン更新
+            tlHomeDepart.textContent = minutesToTime(homeDepartMins);
+            tlTrainDepart.textContent = chosenTrain.dep;
+            tlTrainArrive.textContent = chosenTrain.arr;
+            tlOfficeArrive.textContent = minutesToTime(officeArriveMins);
+            tlWorkStart.textContent = appState.workStartTime;
+            tlWalkHome.textContent = appState.walkToStation;
+            tlTrainDur.textContent = chosenTrain.duration;
+            tlWalkWork.textContent = walkToWork;
+            tlDepStation.textContent = appState.routeData.depStation;
+            tlArrStation.textContent = appState.selectedArrStation;
+            tlTrainInfo.textContent = `${chosenTrain.type}・${chosenTrain.dest}`;
+
+            if (isHatsudai) {
+                tlTransferNote.classList.remove('hidden');
+                tlTransferNote.textContent = `新宿駅（${chosenTrain.shinjukuArr}着）で京王新線へ乗り換え（乗換待ち9分＋乗車2分）`;
+            } else {
+                tlTransferNote.classList.add('hidden');
+            }
+
+            tlMarginNote.textContent = actualMarginMins >= 0
+                ? `始業まで ${actualMarginMins}分 の余裕があります`
+                : `始業時刻を ${Math.abs(actualMarginMins)}分 過ぎてしまいます`;
+
+            // 前後候補リスト描画
+            renderCandidateList(timetable, recommendedIdx, activeIdx, workStartMins, walkToWork);
+
+            if (shouldSave) {
+                saveState();
+            }
+        }
+
+        /**
+         * 1本前・ベスト便・1本後の比較カードを描画
+         */
+        function renderCandidateList(timetable, recommendedIdx, activeIdx, workStartMins, walkToWork) {
+            const candidateIndices = [];
+            if (recommendedIdx - 1 >= 0) candidateIndices.push(recommendedIdx - 1);
+            candidateIndices.push(recommendedIdx);
+            if (recommendedIdx + 1 < timetable.length) candidateIndices.push(recommendedIdx + 1);
+
+            candidateTrainsList.innerHTML = candidateIndices.map(idx => {
+                const tr = timetable[idx];
+                const isSelected = idx === activeIdx;
+                const homeDep = minutesToTime(tr.depMins - appState.walkToStation);
+                const officeArr = tr.arrMins + walkToWork;
+                const margin = workStartMins - officeArr;
+
+                let roleLabel = '';
+                let roleBadgeClass = '';
+                if (idx < recommendedIdx) {
+                    roleLabel = '1本前（安心プラン）';
+                    roleBadgeClass = 'text-sky-700 bg-sky-50 border-sky-200';
+                } else if (idx === recommendedIdx) {
+                    roleLabel = 'おすすめ（ベスト便）';
+                    roleBadgeClass = 'text-orange-700 bg-orange-50 border-orange-200';
+                } else {
+                    roleLabel = margin >= 0 ? '1本後（ギリギリ）' : '1本後（遅刻注意）';
+                    roleBadgeClass = margin >= 0 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-rose-700 bg-rose-50 border-rose-200';
+                }
+
+                const cardBorder = isSelected
+                    ? 'border-orange-500 bg-orange-50/40 ring-2 ring-orange-500/20'
+                    : 'border-slate-200 bg-white hover:border-slate-300';
+
+                const marginText = margin >= 0 ? `始業${margin}分前着` : `${Math.abs(margin)}分遅刻`;
+                const marginColor = margin >= 0 ? 'text-slate-600' : 'text-rose-600 font-bold';
+
+                return `
+                    <button type="button" data-train-idx="${idx}" class="candidate-card w-full text-left p-3 rounded-xl border transition ${cardBorder}">
+                        <div class="flex items-center justify-between gap-2 mb-1.5">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border ${roleBadgeClass}">${roleLabel}</span>
+                                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${getTrainTypeBadgeClass(tr.type)}">${tr.type}</span>
+                            </div>
+                            <span class="text-xs ${marginColor}">${marginText}</span>
+                        </div>
+                        <div class="flex items-baseline justify-between">
+                            <div class="font-num">
+                                <span class="text-lg font-extrabold text-slate-900">${tr.dep}</span>
+                                <span class="text-xs text-slate-500">昭島発</span>
+                                <span class="text-slate-400 mx-1">→</span>
+                                <span class="text-base font-bold text-slate-800">${tr.arr}</span>
+                                <span class="text-xs text-slate-500">${appState.selectedArrStation.replace(/駅$/, '')}着</span>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-[11px] text-slate-500">自宅発 <strong class="font-num text-slate-800">${homeDep}</strong></span>
+                            </div>
+                        </div>
+                    </button>
+                `;
+            }).join('');
+
+            document.querySelectorAll('.candidate-card').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    appState.manualTrainIndex = parseInt(btn.dataset.trainIdx, 10);
+                    renderAll(false);
+                });
+            });
+        }
+
+        /**
+         * トースト表示
+         */
+        function showToast(msg) {
+            toastMessage.textContent = msg;
+            toast.classList.remove('opacity-0', 'translate-y-2');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+            }, 2500);
+        }
+
+        /**
+         * クリップボードコピー
+         */
+        function copySummary() {
+            const isHatsudai = appState.selectedArrStation === '初台駅';
+            const lines = [
+                `【明日の出勤予定：${appState.selectedArrStation}（${appState.dayType === 'weekday' ? '平日' : '土日祝'}ダイヤ）】`,
+                `🏠 自宅出発：${resHomeDepart.textContent}`,
+                `🚃 昭島駅発：${resTrainDepart.textContent}（${resTrainTypePill.textContent}）`
+            ];
+            if (isHatsudai) {
+                lines.push(`🔄 新宿乗換：${resShinjukuArr.textContent}着 → 京王新線へ乗り換え`);
+            }
+            lines.push(`🚉 ${appState.selectedArrStation}着：${resTrainArrive.textContent}`);
+            lines.push(`🏢 職場到着：${resOfficeArrive.textContent}（始業 ${appState.workStartTime}）`);
+
+            const ta = document.createElement('textarea');
+            ta.value = lines.join('\n');
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try {
+                document.execCommand('copy');
+                showToast('明日の乗車スケジュールをコピーしました！');
+            } catch (e) {
+                showToast('コピーに失敗しました');
+            }
+            document.body.removeChild(ta);
+        }
+
+        /**
+         * エディタモーダルを開く
+         */
+        function openEditor() {
+            editDayLabel.textContent = appState.dayType === 'weekday' ? '平日ダイヤ' : '土日祝ダイヤ';
+            const currentList = getNormalizedTimetable();
+            editTimetableText.value = currentList
+                .map(item => `${item.dep}, ${item.shinjukuDur}, ${item.type}, ${item.dest}`)
+                .join('\n');
+            editorModal.classList.remove('hidden');
+        }
+
+        /**
+         * エディタの内容を保存して適用
+         */
+        function applyEditorChanges() {
+            const lines = editTimetableText.value.split('\n').map(l => l.trim()).filter(Boolean);
+            const parsedTrains = [];
+
+            for (const line of lines) {
+                const parts = line.split(',').map(p => p.trim());
+                if (parts.length >= 2 && /^\d{1,2}:\d{2}$/.test(parts[0])) {
+                    const [hh, mm] = parts[0].split(':');
+                    const formattedDep = `${hh.padStart(2, '0')}:${mm.padStart(2, '0')}`;
+                    const durShinjuku = Math.max(10, parseInt(parts[1], 10) || 42);
+                    const type = parts[2] || '快速';
+                    const dest = parts[3] || '東京行';
+                    parsedTrains.push({
+                        dep: formattedDep,
+                        durShinjuku,
+                        type,
+                        dest
+                    });
+                }
+            }
+
+            if (parsedTrains.length === 0) {
+                showToast('有効な時刻データ（例: 07:38, 44, 通勤特快, 東京行）を入力してください');
+                return;
+            }
+
+            appState.routeData[appState.dayType] = parsedTrains;
+            appState.manualTrainIndex = null;
+
+            editorModal.classList.add('hidden');
+            renderAll(true);
+            showToast('時刻表を更新しました！');
+        }
+
+        // 職場切り替えボタンイベント（東京駅 / 初台駅）
+        destTokyoBtn.addEventListener('click', () => {
+            appState.selectedArrStation = '東京駅';
+            appState.manualTrainIndex = null;
+            syncInputsFromState();
+            renderAll(true);
+        });
+
+        destHatsudaiBtn.addEventListener('click', () => {
+            appState.selectedArrStation = '初台駅';
+            appState.manualTrainIndex = null;
+            syncInputsFromState();
+            renderAll(true);
+        });
+
+        // ±15分微調整ボタン
+        document.getElementById('time-minus-15').addEventListener('click', () => {
+            const cur = timeToMinutes(workStartInput.value || '09:00');
+            workStartInput.value = minutesToTime(cur - 15);
+            appState.manualTrainIndex = null;
+            renderAll(true);
+        });
+
+        document.getElementById('time-plus-15').addEventListener('click', () => {
+            const cur = timeToMinutes(workStartInput.value || '09:00');
+            workStartInput.value = minutesToTime(cur + 15);
+            appState.manualTrainIndex = null;
+            renderAll(true);
+        });
+
+        // 入力変更イベント
+        [workStartInput, walkToStationInput, walkToWorkInput, bufferTimeInput].forEach(el => {
+            el.addEventListener('input', () => {
+                appState.manualTrainIndex = null;
+                renderAll(true);
+            });
+            el.addEventListener('change', () => {
+                appState.manualTrainIndex = null;
+                renderAll(true);
+            });
+        });
+
+        dayWeekdayBtn.addEventListener('click', () => {
+            appState.dayType = 'weekday';
+            appState.manualTrainIndex = null;
+            renderAll(false);
+        });
+
+        dayHolidayBtn.addEventListener('click', () => {
+            appState.dayType = 'holiday';
+            appState.manualTrainIndex = null;
+            renderAll(false);
+        });
+
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                workStartInput.value = btn.dataset.time;
+                appState.manualTrainIndex = null;
+                renderAll(true);
+            });
+        });
+
+        document.querySelectorAll('.step-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const target = document.getElementById(btn.dataset.target);
+                const delta = parseInt(btn.dataset.delta, 10);
+                const cur = parseInt(target.value, 10) || 0;
+                const next = Math.min(120, Math.max(0, cur + delta));
+                target.value = next;
+                appState.manualTrainIndex = null;
+                renderAll(true);
+            });
+        });
+
+        document.getElementById('copy-btn').addEventListener('click', copySummary);
+
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            walkToStationInput.value = 10;
+            const def = DEFAULT_WORKPLACE_PROFILES[appState.selectedArrStation] || { walkToWork: 10, bufferTime: 10 };
+            walkToWorkInput.value = def.walkToWork;
+            bufferTimeInput.value = def.bufferTime;
+            appState.manualTrainIndex = null;
+            renderAll(true);
+            showToast(`${appState.selectedArrStation}の徒歩・余裕時間を初期値に戻しました`);
+        });
+
+        // エディタモーダル関連イベント
+        openEditorBtn.addEventListener('click', openEditor);
+        closeEditorBtn.addEventListener('click', () => editorModal.classList.add('hidden'));
+        cancelEditorBtn.addEventListener('click', () => editorModal.classList.add('hidden'));
+        saveEditorBtn.addEventListener('click', applyEditorChanges);
+
+        restoreDefaultTimetableBtn.addEventListener('click', () => {
+            appState.routeData = JSON.parse(JSON.stringify(DEFAULT_TIMETABLE_DATA));
+            appState.manualTrainIndex = null;
+            openEditor();
+            renderAll(true);
+            showToast('標準ダイヤ（04:46〜13:45）に戻しました');
+        });
+
+        // 初期化
+        window.addEventListener('DOMContentLoaded', () => {
+            loadState();
+            renderAll(false);
+        });
+    </script>
+</body>
+</html>
